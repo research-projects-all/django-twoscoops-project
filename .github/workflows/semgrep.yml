@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - run: semgrep scan --config p/python --config p/django --sarif --output semgrep.sarif . || true
+      - run: semgrep scan --config p/python --config p/django --config p/findsecbugs --sarif --output semgrep.sarif . || true
 
       - name: Fix long rule IDs
         if: always()
