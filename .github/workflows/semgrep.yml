@@ -1,9 +1,9 @@
 name: Semgrep Django
 on:
   push:
-    branches:["main", "master", "develop"]
+    branches: ["main", "master", "develop"]
   pull_request:
-    branches:["main", "master", "develop"]
+    branches: ["main", "master", "develop"]
   workflow_dispatch:
 
 permissions:
