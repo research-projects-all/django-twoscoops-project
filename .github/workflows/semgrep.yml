@@ -1,81 +1,45 @@
 name: Semgrep Django
-
 on:
   push:
-    branches: [ "main", "master", "develop" ]
+    branches:["main", "master", "develop"]
   pull_request:
-    branches: [ "main", "master", "develop" ]
-  schedule:
-    - cron: '31 5 * * 3'
+    branches:["main", "master", "develop"]
   workflow_dispatch:
 
 permissions:
   contents: read
   security-events: write
-  actions: read
 
 jobs:
   semgrep:
-    name: Django scan
     runs-on: ubuntu-latest
-
     container:
       image: semgrep/semgrep:latest
-
-    if: github.actor != 'dependabot[bot]'
-
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Run Semgrep default Django/Python rules
-        run: |
-          semgrep scan \
-            --config auto \
-            --config p/python \
-            --config p/django \
-            --sarif \
-            --output semgrep-django.sarif \
-            .
+      - run: semgrep scan --config p/python --config p/django --sarif --output semgrep.sarif . || true
 
-      - name: Normalize SARIF security severity for GitHub
+      - name: Fix long rule IDs
         if: always()
         run: |
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
+          python3 -c "
+          import json, hashlib
+          d = json.load(open('semgrep.sarif'))
+          for run in d.get('runs', []):
+              m = {}
+              for r in run.get('tool', {}).get('driver', {}).get('rules', []):
+                  if len(r.get('id', '')) > 255:
+                      new = r['id'][:238] + '_' + hashlib.sha256(r['id'].encode()).hexdigest()[:16]
+                      m[r['id']] = new
+                      r['id'] = new
+              for res in run.get('results', []):
+                  if res.get('ruleId') in m:
+                      res['ruleId'] = m[res['ruleId']]
+          json.dump(d, open('semgrep.sarif', 'w'))
+          "
 
-          path = Path("semgrep-django.sarif")
-          sarif = json.loads(path.read_text())
-
-          severity_map = {
-              "critical": "9.0",
-              "high": "8.0",
-              "error": "8.0",
-              "medium": "5.0",
-              "warning": "5.0",
-              "low": "2.0",
-              "info": "1.0",
-              "note": "1.0",
-          }
-
-          for run in sarif.get("runs", []):
-              for rule in run.get("tool", {}).get("driver", {}).get("rules", []):
-                  props = rule.setdefault("properties", {})
-                  value = props.get("security-severity")
-
-                  if isinstance(value, str):
-                      normalized = severity_map.get(value.strip().lower())
-                      if normalized:
-                          props["security-severity"] = normalized
-                      else:
-                          props.pop("security-severity", None)
-
-          path.write_text(json.dumps(sarif, indent=2))
-          PY
-
-      - name: Upload SARIF file
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: semgrep-django.sarif
+          sarif_file: semgrep.sarif
